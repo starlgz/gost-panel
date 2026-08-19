@@ -1,0 +1,22 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# 运行时数据（数据库、密钥）
+data/
+*.db
+*.db-wal
+*.db-shm
+jwt_secret
+
+# Node 前端
+web/node_modules/
+web/dist/
+
+# 构建产物
+static/
+
+# 系统/编辑器
+.DS_Store
+*.log
