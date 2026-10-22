@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply font-sans bg-bg text-txt antialiased;
+  }
+  h1 {
+    @apply text-lg font-bold;
+  }
+  /* 隐藏 number 输入框的上下箭头（spinner） */
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+}
+
+@layer components {
+  /* 按钮 */
+  .btn {
+    @apply px-3.5 py-2 rounded-md border-none cursor-pointer text-[13px] bg-[#232833] text-txt transition-colors;
+  }
+  .btn:hover { @apply brightness-110; }
+  .btn:disabled { @apply opacity-60 cursor-not-allowed; }
+  .btn-primary { @apply bg-blue-600 text-white; }
+  .btn-green { @apply bg-green-700 text-white; }
+  .btn-danger { @apply bg-[#3a1f24] text-red-400; }
+  .btn-sm { @apply px-2.5 py-1 text-xs; }
+
+  /* 表单 */
+  .field {
+    @apply px-3 py-2.5 rounded-lg border border-edge bg-input text-txt text-sm w-full outline-none;
+  }
+  .field:focus { @apply border-blue-500; }
+  .label {
+    @apply flex flex-col gap-1.5 text-[13px] text-muted;
+  }
+
+  /* 卡片 */
+  .card {
+    @apply bg-card rounded-xl;
+  }
+
+  /* 表格 */
+  .tbl { @apply w-full border-collapse text-sm; }
+  .tbl th { @apply text-left py-2.5 px-3 border-b border-[#232833] text-muted font-medium text-[13px]; }
+  .tbl td { @apply text-left py-2.5 px-3 border-b border-[#232833]; }
+
+  /* 标签 */
+  .tag { @apply px-2 py-0.5 rounded text-xs font-semibold; }
+  .tag-tcp { @apply bg-[#1c3152] text-[#6aa1ff]; }
+  .tag-udp { @apply bg-[#2e4a2a] text-[#7ed36a]; }
+  .tag-blue { @apply bg-[#1c3152] text-[#6aa1ff]; }
+
+  /* 提示条 */
+  .msg { @apply px-3.5 py-2.5 rounded-md bg-[#1c3152] text-[#6aa1ff] mb-3.5 text-[13px]; }
+  .msg-err { @apply bg-[#3a1f24] text-red-400; }
+
+  /* 弹窗 */
+  .modal { @apply fixed inset-0 bg-black/60 flex justify-center items-center z-50; }
+}

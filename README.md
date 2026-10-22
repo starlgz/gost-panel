@@ -4,9 +4,9 @@
 
 **GOST v3 转发管理面板** — Web 界面管理端口转发与传输隧道，热更新不断流
 
-![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![Go](https://img.shields.io/badge/Go-1.24-00ADD8?logo=go&logoColor=white)
+![Gin](https://img.shields.io/badge/Gin-v1.12-008ECF?logo=goframeworksdotorg&logoColor=white)
 ![Vue](https://img.shields.io/badge/Vue-3-4FC08D?logo=vuedotjs&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.141-009688?logo=fastapi&logoColor=white)
 ![gost](https://img.shields.io/badge/gost-v3.2.6-000000)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
@@ -46,7 +46,7 @@ gost-panel 是一个基于 [gost v3](https://github.com/go-gost/gost) 的转发�
                  ▲
                  │ gost Web API (对象级热更新)
          ┌───────┴───────┐
-         │  面板后端      │  FastAPI + SQLite + JWT
+         │  面板后端      │  Go (Gin) + SQLite + JWT
          │  (127.0.0.1)  │
          └───────┬───────┘
                  ▲
@@ -58,18 +58,20 @@ gost-panel 是一个基于 [gost v3](https://github.com/go-gost/gost) 的转发�
 
 ## 🚀 快速开始
 
-### 一键安装（推荐）
+### 源码安装（构建机）
 
 ```bash
-curl -sL https://raw.githubusercontent.com/starlgz/gost-panel/master/install.sh | bash
+curl -sL https://raw.githubusercontent.com/kingchun/gost-panel/master/install.sh | bash
 ```
 
-脚本自动完成：安装 gost → 配置 API → 克隆代码 → 安装依赖 → 构建前端 → 注册 systemd 服务 → 打印随机生成的密码。
+脚本完成：获取完整源码 → 编译后端 → 复用本地前端产物（缺失时构建）→ 安装 gost → 注册 systemd → 验证登录与 API。线上仓库需已提交完整的 `backend/` 和部署脚本；尚未发布的本地修改请使用下方发布包方式。
+
+> 源码构建需要满足 `backend/go.mod` 要求的 Go 版本；没有 `static/` 时还需 Node.js/npm。服务器不装工具链时使用发布包安装。
 
 自定义参数：
 
 ```bash
-curl -sL https://raw.githubusercontent.com/starlgz/gost-panel/master/install.sh | bash -s -- \
+curl -sL https://raw.githubusercontent.com/kingchun/gost-panel/master/install.sh | bash -s -- \
   --panel-pass mypassword --panel-port 19090
 ```
 
@@ -78,7 +80,50 @@ curl -sL https://raw.githubusercontent.com/starlgz/gost-panel/master/install.sh 
 | `--gost-api-pass` | 随机生成 | gost Web API 密码 |
 | `--panel-pass` | 随机生成 | 面板登录密码 |
 | `--panel-port` | `19090` | 面板监听端口 |
+| `--host` | `127.0.0.1` | 面板监听地址；直接公网访问使用 `0.0.0.0` |
 | `--install-dir` | `/opt/gost-panel` | 安装目录 |
+
+### 离线部署（预编译发布包，生产推荐）
+
+服务器**无需安装 Go / Node.js**，直接用打包好的二进制与前端产物：
+
+```bash
+# 1. 本地打包（Windows）
+cd web
+npm ci
+npm run build
+cd ..
+pwsh -File scripts/build-release.ps1 -Version v0.1.0
+#   产出 release/gost-panel-v0.1.0-linux-amd64.tar.gz 与 ...-arm64.tar.gz
+
+# 2. 上传到服务器
+scp release/gost-panel-v0.1.0-linux-amd64.tar.gz root@服务器IP:/root/
+scp install.sh release/SHA256SUMS.txt root@服务器IP:/root/
+
+# 3. 服务器上一键部署
+ssh root@服务器IP
+cd /root
+sha256sum -c SHA256SUMS.txt
+sudo bash install.sh --archive /root/gost-panel-v0.1.0-linux-amd64.tar.gz --host 0.0.0.0
+```
+
+安装入口调用包内 `deploy.sh`，自动完成：安装缺失的 curl/tar/python3 → 下载并校验 gost → 写本机 API 配置 → 部署二进制与前端 → 注册并启用 systemd → 验证首页、面板登录、gost 引擎和 API。需要 Debian/Ubuntu 或使用 dnf 的 systemd 系统；安装 gost 时需要联网。
+
+重复执行保留规则数据库、gost 配置和已有密码，并重启服务使用新版本。旧二进制与静态文件保存在安装目录的 `backups/`。凭据保存于 `/etc/gost-panel/install.json` 和 `/etc/gost-panel/panel.env`，权限 `0600`，不会打印到终端或写在可公开读取的 unit 文件中。安装器遇到未接管的现有 gost 配置会停止，避免覆盖。
+
+也可自行解包，在包目录运行 `sudo bash deploy.sh --host 0.0.0.0`。两种入口使用同一部署流程。
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--dir` | `/opt/gost-panel` | 安装目录 |
+| `--port` | `19090` | 面板监听端口 |
+| `--host` | `127.0.0.1` | 面板监听地址 |
+| `--user` | `admin` | 面板登录用户名 |
+| `--panel-pass` | 随机生成 | 面板登录密码 |
+| `--gost-api-pass` | 随机生成 | gost API 密码 |
+
+> 后端为**静态编译**（`CGO_ENABLED=0`、`-trimpath`），不依赖服务器的 Go、Node.js 或动态 C 库；此部署脚本需要 systemd，不能直接用于默认使用 OpenRC 的 Alpine。
+> 包内 `BUILD_INFO.txt` 记录版本、构建时间与 git commit。
 
 ### 手动安装
 
@@ -131,11 +176,11 @@ systemctl daemon-reload && systemctl enable --now gost
 **4. 部署面板**
 
 ```bash
-git clone https://github.com/starlgz/gost-panel.git /opt/gost-panel
+git clone https://github.com/kingchun/gost-panel.git /opt/gost-panel
 cd /opt/gost-panel
 
-python3 -m venv venv
-./venv/bin/pip install fastapi "uvicorn[standard]" pyjwt passlib
+# 编译后端（纯 Go，无 CGO）
+cd backend && CGO_ENABLED=0 go build -ldflags "-s -w" -o gost-panel ./cmd/gost-panel && cd ..
 
 cd web && npm install && npm run build && cd ..   # 产物输出到 ../static/
 ```
@@ -151,9 +196,10 @@ After=network-online.target gost.service
 [Service]
 Type=simple
 WorkingDirectory=/opt/gost-panel
+Environment=GOST_PANEL_DIR=/opt/gost-panel
 Environment=GOST_API_PASS=your-api-password
 Environment=PANEL_PASS=your-panel-password
-ExecStart=/opt/gost-panel/venv/bin/python /opt/gost-panel/panel.py
+ExecStart=/opt/gost-panel/backend/gost-panel
 Restart=always
 
 [Install]
@@ -218,15 +264,21 @@ systemctl daemon-reload && systemctl enable --now gost-panel
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | POST | `/api/login` | 登录获取 JWT |
-| GET | `/api/status` | gost/面板状态 |
-| GET | `/api/rules` | 规则列表（含客户端命令） |
+| GET | `/api/status` | gost/面板状态（面板版本由构建注入） |
+| GET | `/api/rules` | 规则列表（含客户端命令）；带 `page`/`page_size`/`keyword` 时返回分页结构 |
+| GET | `/api/rules/stats` | 规则聚合统计（总数/启用/TCP/UDP/隧道） |
 | POST | `/api/rules` | 新建规则 |
 | PUT | `/api/rules/{id}` | 更新规则 |
 | DELETE | `/api/rules/{id}` | 删除规则 |
 | POST | `/api/rules/apply` | 手动同步到 gost |
-| GET | `/api/audit` | 审计日志 |
+| GET | `/api/gost/services` | 拉取 gost 当前运行的服务列表（用于比对） |
+| POST | `/api/gost/import` | 把 gost 现有服务导入为面板规则 |
+| GET | `/api/audit` | 审计日志（支持 `limit` 或分页参数） |
+| DELETE | `/api/audit` | **一键清空审计日志** |
+| POST | `/api/change-password` | 修改面板登录密码 |
 
 所有接口（除 login 外）需 `Authorization: Bearer <token>`。
+响应统一为 `{"code":0,"message":"ok","data":...}`，失败时 `code != 0`。
 
 ## 🗺 路线图
 
@@ -238,7 +290,7 @@ systemctl daemon-reload && systemctl enable --now gost-panel
 
 ## 🛠 技术栈
 
-- **后端**：Python 3.11 / FastAPI / SQLite / PyJWT
+- **后端**：Go / Gin / SQLite（modernc.org/sqlite 纯 Go 驱动，无 CGO）/ golang-jwt
 - **前端**：Vue 3 / Vue Router / Vite
 - **引擎**：gost v3.2.6
 

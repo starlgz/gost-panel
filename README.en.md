@@ -32,7 +32,7 @@ curl -sL https://raw.githubusercontent.com/starlgz/gost-panel/master/install.sh 
                  ▲
                  │ gost Web API (hot reload)
          ┌───────┴───────┐
-         │  Panel Backend │  FastAPI + SQLite + JWT
+         │  Panel Backend │  Go (Gin) + SQLite + JWT
          └───────┬───────┘
                  ▲
                  │ HTTPS (SSH tunnel / Nginx / Cloudflare Tunnel)
@@ -57,7 +57,7 @@ curl -sL https://raw.githubusercontent.com/starlgz/gost-panel/master/install.sh 
 
 ## Tech Stack
 
-- Backend: Python 3.11 / FastAPI / SQLite / PyJWT
+- Backend: Go / Gin / SQLite (pure-Go driver, no CGO) / golang-jwt
 - Frontend: Vue 3 / Vue Router / Vite
 - Engine: gost v3.2.6
 
