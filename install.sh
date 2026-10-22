@@ -1,175 +1,156 @@
-#!/bin/bash
-# ============================================================
-# gost-panel 一键安装脚本
-# 用法：
-#   curl -sL https://raw.githubusercontent.com/starlgz/gost-panel/main/install.sh | bash
-#   或：bash install.sh [--gost-api-pass xxx] [--panel-pass xxx]
-# ============================================================
+#!/usr/bin/env bash
+# 自动下载 GitHub Releases 中对应架构的预编译包，无需 Go / Node.js。
+# curl -fL https://github.com/kingchun/gost-panel/releases/latest/download/install.sh -o install.sh
+# sudo bash install.sh --host 0.0.0.0
 set -euo pipefail
-
-# ---------- 颜色 ----------
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'; NC='\033[0m'
-info()  { echo -e "${GREEN}[INFO]${NC} $1"; }
-warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
-err()   { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
-
-# ---------- 参数 ----------
-GOST_API_PASS=""
-PANEL_PASS=""
-PANEL_PORT="19090"
-GOST_API_PORT="18080"
-REPO_URL="https://github.com/starlgz/gost-panel.git"
-GOST_VERSION="v3.2.6"
-INSTALL_DIR="/opt/gost-panel"
-
-while [[ $# -gt 0 ]]; do
+umask 077
+die() { printf '[ERROR] %s\n' "$*" >&2; exit 1; }
+info() { printf '[INFO] %s\n' "$*"; }
+usage() {
+  cat <<'HELP'
+用法：bash install.sh [选项] [部署参数]
+  默认                  自动识别 linux/amd64、linux/arm64，下载最新正式版并校验 SHA256
+  --version v0.1.0      下载指定版本
+  --download-only DIR   仅下载并校验发布包到 DIR，不安装服务（无需 root）
+  --archive FILE        使用本地 tar.gz 发布包
+  --package-dir DIR     使用已解包目录
+  --source              从源码构建（需要 Go；无前端产物时还需要 npm）
+  --host ADDRESS        面板监听地址，默认 127.0.0.1
+  --port PORT           面板端口，默认 19090
+  --dir DIR             安装目录，默认 /opt/gost-panel
+  --user USER           首次安装的用户名，默认 admin
+  --panel-pass PASS     首次安装的密码，默认随机生成
+  --gost-api-pass PASS  首次安装的 gost API 密码，默认随机生成
+HELP
+}
+SCRIPT_DIR=''
+if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
+  SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+fi
+REPO=kingchun/gost-panel
+version=latest; archive=''; package_dir=''; source_mode=0; download_dir=''; deploy_args=()
+while (($#)); do
   case "$1" in
-    --gost-api-pass) GOST_API_PASS="$2"; shift 2 ;;
-    --panel-pass)    PANEL_PASS="$2";    shift 2 ;;
-    --panel-port)    PANEL_PORT="$2";    shift 2 ;;
-    --install-dir)   INSTALL_DIR="$2";   shift 2 ;;
-    *) warn "未知参数: $1"; shift ;;
+    --archive|--package-dir|--version|--download-only)
+      (($# >= 2)) || die "$1 缺少参数值"
+      [[ -n "$2" ]] || die "$1 参数值不能为空"
+      case "$1" in
+        --archive) archive="$2" ;;
+        --package-dir) package_dir="$2" ;;
+        --version) version="$2" ;;
+        --download-only) download_dir="$2" ;;
+      esac
+      shift 2 ;;
+    --source) source_mode=1; shift ;;
+    --install-dir|--dir|--panel-port|--port|--panel-host|--host|--user|--panel-pass|--gost-api-pass)
+      (($# >= 2)) || die "$1 缺少参数值"
+      deploy_args+=("$1" "$2"); shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) die "未知参数: $1" ;;
   esac
 done
+[[ -n "$download_dir" || $EUID == 0 ]] || die '请使用 root 运行，或使用 --download-only 仅下载'
+[[ "$(uname -s)" == Linux ]] || die '仅支持 Linux'
+modes=$source_mode
+[[ -z "$archive" ]] || modes=$((modes + 1))
+[[ -z "$package_dir" ]] || modes=$((modes + 1))
+((modes <= 1)) || die '--source、--archive、--package-dir 不能同时使用'
+[[ -z "$download_dir" || $modes == 0 ]] || die '--download-only 只能用于在线下载发布包'
 
-# 密码：未指定则随机生成
-gen_pass() { tr -dc 'a-zA-Z0-9' </dev/urandom | head -c 16; }
-[ -z "$GOST_API_PASS" ] && GOST_API_PASS=$(gen_pass)
-[ -z "$PANEL_PASS" ]    && PANEL_PASS=$(gen_pass)
-
-# ---------- 前置检查 ----------
-[[ $EUID -ne 0 ]] && err "请用 root 运行：sudo bash install.sh"
-command -v curl >/dev/null || err "需要 curl"
-command -v systemctl >/dev/null || err "需要 systemd"
-
-# ---------- 1. 安装 gost ----------
-if command -v gost >/dev/null 2>&1; then
-  info "gost 已安装: $(gost -V 2>&1 | head -1)"
-else
-  info "下载 gost $GOST_VERSION ..."
-  ARCH=$(uname -m)
-  case "$ARCH" in
-    x86_64)  G_ARCH="amd64" ;;
-    aarch64|arm64) G_ARCH="arm64" ;;
-    *) err "不支持的架构: $ARCH" ;;
-  esac
-  curl -sL -o /tmp/gost.tar.gz \
-    "https://github.com/go-gost/gost/releases/download/${GOST_VERSION}/gost_${GOST_VERSION#v}_linux_${G_ARCH}.tar.gz"
-  tar xzf /tmp/gost.tar.gz -C /tmp
-  install -m 0755 /tmp/gost /usr/local/bin/gost
-  info "gost 安装完成: $(gost -V 2>&1 | head -1)"
-fi
-
-# ---------- 2. gost 配置 + systemd ----------
-mkdir -p /opt/gost
-cat > /opt/gost/config.json <<EOF
-{
-  "api": {
-    "addr": ":${GOST_API_PORT}",
-    "auth": { "username": "admin", "password": "${GOST_API_PASS}" }
-  },
-  "services": []
-}
-EOF
-
-cat > /etc/systemd/system/gost.service <<EOF
-[Unit]
-Description=GOST v3 proxy/tunnel engine
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/gost -C /opt/gost/config.json
-Restart=always
-RestartSec=3
-LimitNOFILE=65535
-
-[Install]
-WantedBy=multi-user.target
-EOF
-systemctl daemon-reload
-systemctl enable --now gost >/dev/null 2>&1
-info "gost 服务已启动 (API: 127.0.0.1:${GOST_API_PORT})"
-
-# ---------- 3. 部署面板代码 ----------
-if [[ -d "$INSTALL_DIR/.git" ]]; then
-  info "面板目录已存在，更新代码..."
-  cd "$INSTALL_DIR" && git pull --ff-only || warn "git pull 失败，继续使用现有代码"
-else
-  info "克隆面板代码到 $INSTALL_DIR ..."
-  git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
-fi
-cd "$INSTALL_DIR"
-
-# ---------- 4. 后端依赖 ----------
-if ! command -v python3 >/dev/null 2>&1; then
-  err "需要 python3"
-fi
-if ! python3 -m venv --help >/dev/null 2>&1; then
-  info "安装 python3-venv ..."
-  apt-get update -qq && apt-get install -y -qq python3-venv >/dev/null
-fi
-if [[ ! -d venv ]]; then
-  python3 -m venv venv
-fi
-./venv/bin/pip install -q --upgrade pip >/dev/null 2>&1 || true
-./venv/bin/pip install -q fastapi "uvicorn[standard]" pyjwt passlib
-info "后端依赖安装完成"
-
-# ---------- 5. 前端构建 ----------
-if command -v npm >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
-  if [[ ! -d web/node_modules ]]; then
-    info "安装前端依赖并构建..."
-    (cd web && npm install --no-audit --no-fund >/dev/null 2>&1 && npm run build >/dev/null 2>&1)
-  elif [[ ! -d static ]]; then
-    (cd web && npm run build >/dev/null 2>&1)
+ensure_tools() {
+  local cmd missing=()
+  for cmd in "$@"; do command -v "$cmd" >/dev/null || missing+=("$cmd"); done
+  ((${#missing[@]})) || return 0
+  [[ $EUID == 0 ]] || die "缺少依赖: ${missing[*]}，请先安装"
+  if command -v apt-get >/dev/null; then
+    DEBIAN_FRONTEND=noninteractive apt-get update -qq
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl ca-certificates python3 coreutils
+  elif command -v dnf >/dev/null; then
+    dnf install -y curl ca-certificates python3 coreutils
+  else
+    die "缺少依赖: ${missing[*]}，请先安装 curl、python3、coreutils"
   fi
-  info "前端构建完成"
-else
-  warn "未检测到 node/npm，跳过前端构建（面板只能访问 API，无界面）"
-  warn "请手动安装 Node.js 后执行：cd $INSTALL_DIR/web && npm install && npm run build"
+}
+resolve_version() {
+  if [[ "$version" == latest ]]; then
+    curl -fLsS --retry 3 --connect-timeout 20 --max-time 60 \
+      "https://api.github.com/repos/$REPO/releases/latest" -o "$work_dir/release.json"
+    version="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["tag_name"])' "$work_dir/release.json")"
+  fi
+  [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][a-zA-Z0-9.-]+)?$ ]] || die '版本格式应为 v0.1.0'
+}
+work_dir="$(mktemp -d /tmp/gost-panel-setup.XXXXXX)"
+trap 'rm -rf -- "$work_dir"' EXIT
+
+if ((modes == 0)); then
+  case "$(uname -m)" in
+    x86_64|amd64) arch=amd64 ;;
+    aarch64|arm64) arch=arm64 ;;
+    *) die '仅支持 x86_64/amd64 和 aarch64/arm64' ;;
+  esac
+  ensure_tools curl python3 sha256sum
+  resolve_version
+  asset="gost-panel-$version-linux-$arch.tar.gz"
+  base="https://github.com/$REPO/releases/download/$version"
+  info "下载 $version / linux/$arch"
+  curl -fLsS --retry 3 --connect-timeout 20 --max-time 600 "$base/$asset" -o "$work_dir/$asset"
+  curl -fLsS --retry 3 --connect-timeout 20 --max-time 60 "$base/SHA256SUMS.txt" -o "$work_dir/SHA256SUMS.txt"
+  awk -v name="$asset" '$2 == name { print; found++ } END { if (found != 1) exit 1 }' \
+    "$work_dir/SHA256SUMS.txt" > "$work_dir/selected.sha256" || die '发布清单中未找到唯一匹配的校验和'
+  (cd "$work_dir" && sha256sum -c selected.sha256) || die '发布包 SHA256 校验失败，已停止安装'
+  archive="$work_dir/$asset"
 fi
 
-# ---------- 6. 面板 systemd 服务 ----------
-cat > /etc/systemd/system/gost-panel.service <<EOF
-[Unit]
-Description=gost-panel - GOST forwarding management panel
-After=network-online.target gost.service
-Wants=network-online.target
-
-[Service]
-Type=simple
-WorkingDirectory=$INSTALL_DIR
-Environment=GOST_API_PASS=${GOST_API_PASS}
-Environment=PANEL_PASS=${PANEL_PASS}
-Environment=PANEL_PORT=${PANEL_PORT}
-ExecStart=$INSTALL_DIR/venv/bin/python $INSTALL_DIR/panel.py
-Restart=always
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-EOF
-systemctl daemon-reload
-systemctl enable --now gost-panel >/dev/null 2>&1
-sleep 2
-systemctl is-active gost-panel >/dev/null || err "面板启动失败，查看日志：journalctl -u gost-panel -n 50"
-info "面板服务已启动 (127.0.0.1:${PANEL_PORT})"
-
-# ---------- 完成 ----------
-echo
-echo "============================================"
-echo "  gost-panel 安装完成！"
-echo "============================================"
-echo "  gost API:    http://127.0.0.1:${GOST_API_PORT}  (admin / ${GOST_API_PASS})"
-echo "  面板地址:    http://127.0.0.1:${PANEL_PORT}    (admin / ${PANEL_PASS})"
-echo "  面板目录:    $INSTALL_DIR"
-echo "--------------------------------------------"
-echo "  公网访问方式（任选）："
-echo "  1) SSH 隧道:  ssh -L ${PANEL_PORT}:127.0.0.1:${PANEL_PORT} root@服务器IP"
-echo "  2) 反代/隧道: 配置 nginx 或 cloudflared 指向 127.0.0.1:${PANEL_PORT}"
-echo "============================================"
-echo
-warn "请务必修改面板密码：编辑 /etc/systemd/system/gost-panel.service 中的 PANEL_PASS"
-warn "改完执行：systemctl daemon-reload && systemctl restart gost-panel"
+if [[ -n "$archive" ]]; then
+  [[ -f "$archive" ]] || die "发布包不存在: $archive"
+  # 发布包必须只包含一个顶层目录，拒绝路径穿越、绝对路径和符号链接。
+  ensure_tools python3
+  python3 - "$archive" "$work_dir" <<'PY'
+import pathlib, sys, tarfile
+with tarfile.open(sys.argv[1], 'r:gz') as archive:
+    members = archive.getmembers()
+    if not members:
+        raise SystemExit('发布包为空')
+    for entry in members:
+        path = pathlib.PurePosixPath(entry.name)
+        if not path.parts or path.is_absolute() or '..' in path.parts or not (entry.isdir() or entry.isfile()):
+            raise SystemExit('不安全的发布包路径或文件类型')
+    roots = {pathlib.PurePosixPath(entry.name).parts[0] for entry in members}
+    if len(roots) != 1:
+        raise SystemExit('发布包必须只含一个顶层目录')
+    archive.extractall(sys.argv[2], **({'filter': 'data'} if hasattr(tarfile, 'data_filter') else {}))
+PY
+  package_dir="$(find "$work_dir" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+elif ((source_mode)); then
+  source_dir="$SCRIPT_DIR"
+  if [[ ! -f "$source_dir/backend/go.mod" ]]; then
+    command -v git >/dev/null || die '请先安装 git，或上传发布包并使用 --archive'
+    source_dir="$work_dir/source"
+    ensure_tools curl python3
+    resolve_version
+    git clone --depth 1 --branch "$version" "https://github.com/$REPO.git" "$source_dir"
+  fi
+  [[ -f "$source_dir/backend/go.mod" ]] || die '仓库缺少 Go 后端源码；请发布完整代码或使用本地构建的 --archive 发布包'
+  command -v go >/dev/null || die '源码模式需要 Go；服务器无需 Go 的安装方式：--archive 发布包'
+  package_dir="$work_dir/package"
+  mkdir -p "$package_dir"
+  printf '[INFO] 构建 Go 后端\n'
+  (cd "$source_dir/backend" && CGO_ENABLED=0 go build -trimpath \
+    -ldflags "-s -w -X gost-panel/internal/api.Version=${PANEL_VERSION:-v0.1.0}" \
+    -o "$package_dir/gost-panel" ./cmd/gost-panel)
+  if [[ ! -f "$source_dir/static/index.html" ]]; then
+    command -v npm >/dev/null || die '没有前端产物，请先在本地 npm ci && npm run build，或上传完整发布包'
+    (cd "$source_dir/web" && npm ci --no-audit --no-fund && npm run build)
+  fi
+  cp -R "$source_dir/static" "$package_dir/static"
+  cp "$source_dir/scripts/release/deploy.sh" "$package_dir/deploy.sh"
+fi
+[[ -f "$package_dir/deploy.sh" && -f "$package_dir/gost-panel" && -f "$package_dir/static/index.html" ]] || die '发布包缺少 deploy.sh、后端二进制或前端产物'
+if [[ -n "$download_dir" ]]; then
+  mkdir -p -- "$download_dir"
+  cp -- "$archive" "$download_dir/$asset"
+  cp -- "$work_dir/selected.sha256" "$download_dir/SHA256SUMS.txt"
+  info "发布包已下载并校验：$download_dir/$asset"
+  exit 0
+fi
+bash "$package_dir/deploy.sh" "${deploy_args[@]}"

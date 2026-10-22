@@ -1,8 +1,3 @@
-# Python
-venv/
-__pycache__/
-*.pyc
-
 # 运行时数据（数据库、密钥）
 data/
 *.db
@@ -10,12 +5,36 @@ data/
 *.db-shm
 jwt_secret
 
+# 本地环境配置（示例配置可提交）
+.env
+.env.*
+!.env.example
+!.env.*.example
+
 # Node 前端
 web/node_modules/
 web/dist/
 
-# 构建产物
+# 前端构建产物（由 web/ 构建生成，不入库）
 static/
+
+# Go 构建产物（含 backend/ 下的本地构建，避免误提交 40MB 二进制）
+/gost-panel
+/gost-panel.exe
+/gost-panel-linux-*
+/backend/gost-panel
+/backend/*.exe
+/backend/gost-panel.exe~
+/backend/gost-panel-linux-*
+/backend/gost-panel-darwin-*
+
+# 打包产物
+/release/
+dist/
+
+# 本地工具缓存与浏览器测试产物
+/.serena/
+/.playwright-mcp/
 
 # 系统/编辑器
 .DS_Store
