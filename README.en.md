@@ -15,15 +15,22 @@
 ## Quick Start (one command)
 
 ```bash
-curl -sL https://raw.githubusercontent.com/starlgz/gost-panel/master/install.sh | bash
+curl -fL --retry 3 https://github.com/kingchun/gost-panel/releases/latest/download/install.sh -o install.sh
+sudo bash install.sh --host 0.0.0.0
 ```
+
+The installer detects Linux amd64/arm64, downloads the matching prebuilt frontend/backend package from GitHub Releases, verifies SHA256, and installs the systemd services. No Go, Node.js, or git is needed on the server. Debian/Ubuntu and dnf-based systemd distributions are supported.
 
 Custom options:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/starlgz/gost-panel/master/install.sh | bash -s -- \
-  --panel-pass mypassword --panel-port 19090
+sudo bash install.sh --version v0.1.0 --user admin --panel-pass 'your-password' --host 0.0.0.0 --port 19090
+
+# Download and verify only; no root required.
+bash install.sh --version v0.1.0 --download-only ./packages
 ```
+
+For offline installation, use `sudo bash install.sh --archive ./gost-panel-v0.1.0-linux-amd64.tar.gz --host 0.0.0.0`. Use `--source` explicitly to compile from source. Reinstallation preserves rules, GOST configuration, and existing credentials.
 
 ## Architecture
 

@@ -4,7 +4,7 @@
 
 **GOST v3 转发管理面板** — Web 界面管理端口转发与传输隧道，热更新不断流
 
-![Go](https://img.shields.io/badge/Go-1.24-00ADD8?logo=go&logoColor=white)
+![Go](https://img.shields.io/badge/Go-1.26.3-00ADD8?logo=go&logoColor=white)
 ![Gin](https://img.shields.io/badge/Gin-v1.12-008ECF?logo=goframeworksdotorg&logoColor=white)
 ![Vue](https://img.shields.io/badge/Vue-3-4FC08D?logo=vuedotjs&logoColor=white)
 ![gost](https://img.shields.io/badge/gost-v3.2.6-000000)
@@ -58,25 +58,34 @@ gost-panel 是一个基于 [gost v3](https://github.com/go-gost/gost) 的转发�
 
 ## 🚀 快速开始
 
-### 源码安装（构建机）
+### 一键安装（预编译包，无需 Go / Node.js）
 
 ```bash
-curl -sL https://raw.githubusercontent.com/kingchun/gost-panel/master/install.sh | bash
+curl -fL --retry 3 https://github.com/kingchun/gost-panel/releases/latest/download/install.sh -o install.sh
+sudo bash install.sh --host 0.0.0.0
 ```
 
-脚本完成：获取完整源码 → 编译后端 → 复用本地前端产物（缺失时构建）→ 安装 gost → 注册 systemd → 验证登录与 API。线上仓库需已提交完整的 `backend/` 和部署脚本；尚未发布的本地修改请使用下方发布包方式。
+脚本自动识别 Linux **amd64（x86_64）/ arm64（aarch64）**，从 [GitHub Releases](https://github.com/kingchun/gost-panel/releases) 下载对应架构的前后端发布包，校验 SHA256 后安装 gost、注册 systemd 并验证登录与 API。服务器无需 git、Go 或 Node.js。
 
-> 源码构建需要满足 `backend/go.mod` 要求的 Go 版本；没有 `static/` 时还需 Node.js/npm。服务器不装工具链时使用发布包安装。
+> 支持 Debian/Ubuntu 和使用 dnf 的 systemd 系统。默认仅监听 `127.0.0.1`；命令中的 `--host 0.0.0.0` 开启外部访问。
 
 自定义参数：
 
 ```bash
-curl -sL https://raw.githubusercontent.com/kingchun/gost-panel/master/install.sh | bash -s -- \
-  --panel-pass mypassword --panel-port 19090
+sudo bash install.sh --version v0.1.0 --user admin --panel-pass '替换成你的密码' --host 0.0.0.0 --port 19090
+
+# 也可以只下载并校验发布包，稍后离线安装（不需要 root）
+bash install.sh --version v0.1.0 --download-only ./packages
 ```
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
+| `--version` | 最新正式版 | 指定 GitHub Release 版本，如 `v0.1.0` |
+| `--download-only` | 不启用 | 仅下载并校验发布包到指定目录 |
+| `--archive` | 不启用 | 使用本地 tar.gz 包部署 |
+| `--package-dir` | 不启用 | 使用已解包目录部署 |
+| `--source` | 不启用 | 从源码构建；需满足 `backend/go.mod` 要求的 Go，缺少前端产物时还需 npm |
+| `--user` | `admin` | 首次安装的面板用户名 |
 | `--gost-api-pass` | 随机生成 | gost Web API 密码 |
 | `--panel-pass` | 随机生成 | 面板登录密码 |
 | `--panel-port` | `19090` | 面板监听端口 |
@@ -94,16 +103,16 @@ npm ci
 npm run build
 cd ..
 pwsh -File scripts/build-release.ps1 -Version v0.1.0
-#   产出 release/gost-panel-v0.1.0-linux-amd64.tar.gz 与 ...-arm64.tar.gz
+#   产出两个架构的 tar.gz、install.sh 和 SHA256SUMS.txt，作为同一 Release 的附件上传
 
 # 2. 上传到服务器
 scp release/gost-panel-v0.1.0-linux-amd64.tar.gz root@服务器IP:/root/
-scp install.sh release/SHA256SUMS.txt root@服务器IP:/root/
+scp release/install.sh release/SHA256SUMS.txt root@服务器IP:/root/
 
 # 3. 服务器上一键部署
 ssh root@服务器IP
 cd /root
-sha256sum -c SHA256SUMS.txt
+grep '  gost-panel-v0.1.0-linux-amd64.tar.gz$' SHA256SUMS.txt | sha256sum -c -
 sudo bash install.sh --archive /root/gost-panel-v0.1.0-linux-amd64.tar.gz --host 0.0.0.0
 ```
 
@@ -124,6 +133,8 @@ sudo bash install.sh --archive /root/gost-panel-v0.1.0-linux-amd64.tar.gz --host
 
 > 后端为**静态编译**（`CGO_ENABLED=0`、`-trimpath`），不依赖服务器的 Go、Node.js 或动态 C 库；此部署脚本需要 systemd，不能直接用于默认使用 OpenRC 的 Alpine。
 > 包内 `BUILD_INFO.txt` 记录版本、构建时间与 git commit。
+
+在完整源码目录执行 `sudo bash install.sh --source --host 0.0.0.0` 可显式使用源码构建。安装器回归测试：`python3 scripts/tests/test_install.py`（Linux，需 bash、python3、sha256sum；安装路径测试需 root，测试中的部署脚本为隔离夹具，不修改系统服务）。
 
 ### 手动安装
 

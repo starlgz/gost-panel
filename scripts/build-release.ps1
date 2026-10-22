@@ -13,7 +13,7 @@
 #   2. -Compress 需要 upx：优先取 PATH，其次取 release/.tools/upx/**/upx.exe。
 param(
     [string]$Version = "v0.1.0",
-    [string[]]$Arch = @("amd64", "arm64"),
+    [ValidateSet("amd64", "arm64")][string[]]$Arch = @("amd64", "arm64"),
     [switch]$Compress,
     [ValidateSet("lzma", "best")][string]$UpxMode = "lzma",
     [string]$UpxPath = ""
@@ -233,5 +233,11 @@ if ($Compress) {
 Write-Host "输出目录: $OutDir" -ForegroundColor Cyan
 
 $sumFile = Join-Path $OutDir "SHA256SUMS.txt"
-$results | ForEach-Object { "$($_.SHA256)  $($_.Package)" } | Set-Content $sumFile -Encoding UTF8NoBOM
+$installerSource = [System.IO.File]::ReadAllText((Join-Path $Root "install.sh")) -replace "`r`n", "`n"
+$installerPath = Join-Path $OutDir "install.sh"
+[System.IO.File]::WriteAllText($installerPath, $installerSource, [System.Text.UTF8Encoding]::new($false))
+$checksums = @($results | ForEach-Object { "$($_.SHA256)  $($_.Package)" })
+$checksums += "$((Get-FileHash $installerPath -Algorithm SHA256).Hash.ToLower())  install.sh"
+[System.IO.File]::WriteAllText($sumFile, ($checksums -join "`n") + "`n", [System.Text.UTF8Encoding]::new($false))
 Info "校验和已写入 $sumFile"
+Info "发布时上传两个架构的 tar.gz、SHA256SUMS.txt 和 install.sh"
